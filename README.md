@@ -37,3 +37,6 @@
 - Capture screenshot of successful pipeline execution
 - Capture screenshot of failed pipeline execution
 - Add both images to the project documentation
+
+### Architecture of project
+![Architecture for project](./images/ci_cd_jenkins.png)
