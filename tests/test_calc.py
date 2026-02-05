@@ -7,7 +7,9 @@ def zero():
 
 @pytest.mark.bad
 def test_add():
-    assert add(2, 3) == 7
+    
+    #Addition
+    assert add(2, 3) == 5
 
 @pytest.mark.good
 def test_subtract():

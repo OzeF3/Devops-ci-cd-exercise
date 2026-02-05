@@ -11,7 +11,11 @@ from selenium.webdriver.firefox.options import Options
 from webdriver_manager.firefox import GeckoDriverManager
 from app import create_app
 import threading
+# Addition
+import shutil
 
+# Addition
+pytestmark = pytest.mark.e2e
 
 @pytest.fixture(scope="module")
 def app_server():
@@ -30,7 +34,14 @@ def app_server():
 @pytest.fixture
 def driver(app_server):
     firefox_options = Options()
-    # firefox_options.add_argument("--headless")
+
+    # Addition
+    if shutil.which("firefox") is None:
+        pytest.skip("Firefox not installed; skipping E2E Selenium tests on this environment")
+
+    # Addition
+    firefox_options.add_argument("--headless")
+
     firefox_options.add_argument("--no-sandbox")
     firefox_options.add_argument("--disable-dev-shm-usage")
     
