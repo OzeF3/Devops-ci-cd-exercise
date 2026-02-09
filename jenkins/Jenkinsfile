@@ -76,7 +76,7 @@ pipeline {
     archiveArtifacts artifacts: 'reports/**,coverage.xml,htmlcov/**', allowEmptyArchive: true
   }
 }
-
+        }
         stage('Integration Tests') {
             steps {
                 script {
@@ -157,17 +157,11 @@ pipeline {
                 }
             }
             post {
-                always {
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'reports',
-                        reportFiles: 'performance-report.html',
-                        reportName: 'Performance Test Report'
-                    ])
-                }
-            }
+  always {
+    archiveArtifacts artifacts: 'reports/performance-report.html', allowEmptyArchive: true
+  }
+}
+
         }
 
         stage('Security Scan') {
