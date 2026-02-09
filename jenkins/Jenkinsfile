@@ -71,20 +71,11 @@ pipeline {
                 }
             }
             post {
-                always {
-                    junit 'reports/unit-tests.xml'
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'htmlcov',
-                        reportFiles: 'index.html',
-                        reportName: 'Unit Test Coverage Report'
-                    ])
-                    archiveArtifacts artifacts: 'htmlcov/**/*', allowEmptyArchive: false
-                }
-            }
-        }
+  always {
+    junit 'reports/unit-tests.xml'
+    archiveArtifacts artifacts: 'reports/**,coverage.xml,htmlcov/**', allowEmptyArchive: true
+  }
+}
 
         stage('Integration Tests') {
             steps {
