@@ -7,6 +7,6 @@ locust
 requests
 selenium
 flake8==7.1.1
-pylint==3.1.0
+pylint==3.0.3
 bandit==1.7.8
 
