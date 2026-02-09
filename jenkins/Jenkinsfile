@@ -1,8 +1,6 @@
 pipeline {
-    agent {
-        docker { image 'python:3.9' }
-    }
-    
+    agent any
+
     parameters {
         choice(
             name: 'ENVIRONMENT',
@@ -11,33 +9,48 @@ pipeline {
         )
     }
 
-    
     environment {
         VENV_DIR = 'venv'
         DOCKERHUB_REPO = 'devoeoe23ops/devops-testing-app'
         DOCKERHUB_CREDS = 'dockerhub-creds'
+        PY_IMAGE = 'python:3.9'
+        APP_DIR = '/app'
     }
-    
+
     stages {
+
+        stage('Verify Docker (host)') {
+            steps {
+                sh 'docker --version'
+                sh 'docker info'
+                sh 'docker ps'
+            }
+        }
+
         stage('Setup Environment') {
             steps {
                 script {
-                    sh 'echo "Setting up Python environment"'
-                    
-                    sh 'python -m venv ${VENV_DIR}'
-
-                    sh '. ${VENV_DIR}/bin/activate && pip install --upgrade pip'
-                    sh '. ${VENV_DIR}/bin/activate && pip install -r requirements.txt'
+                    sh 'echo "Setting up Python environment (inside docker run)"'
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc "python -m venv ${VENV_DIR} && . ${VENV_DIR}/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+                    """
                 }
             }
         }
-        
+
         stage('Lint Code') {
             steps {
                 script {
                     sh 'mkdir -p reports'
-                    sh '. ${VENV_DIR}/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true'
-                    sh '. ${VENV_DIR}/bin/activate && pylint app/ --output=reports/pylint.txt || true'
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc ". ${VENV_DIR}/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true"
+                    """
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc ". ${VENV_DIR}/bin/activate && pylint app/ --output=reports/pylint.txt || true"
+                    """
                 }
             }
             post {
@@ -46,12 +59,15 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Unit Tests') {
             steps {
                 script {
                     sh 'mkdir -p reports'
-                    sh '. ${VENV_DIR}/bin/activate && pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=html --junit-xml=reports/unit-tests.xml'
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc ". ${VENV_DIR}/bin/activate && pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=html --junit-xml=reports/unit-tests.xml"
+                    """
                 }
             }
             post {
@@ -69,11 +85,15 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Integration Tests') {
             steps {
                 script {
-                    sh '. ${VENV_DIR}/bin/activate && pytest tests/integration/ -v --junit-xml=reports/integration-tests.xml'
+                    sh 'mkdir -p reports'
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc ". ${VENV_DIR}/bin/activate && pytest tests/integration/ -v --junit-xml=reports/integration-tests.xml"
+                    """
                 }
             }
             post {
@@ -82,125 +102,91 @@ pipeline {
                 }
             }
         }
-        
+
         stage('End-to-End Tests') {
             when {
-    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-}
-
-    steps {
-        script {
-            sh '''
-                . ${VENV_DIR}/bin/activate
-                mkdir -p reports
-
-                docker rm -f selenium-firefox || true
-                docker run -d --name selenium-firefox -p 4444:4444 --add-host=host.docker.internal:host-gateway selenium/standalone-firefox:latest
-
-
-                sleep 8
-
-                export SELENIUM_REMOTE_URL="http://localhost:4444/wd/hub"
-                export APP_BASE_URL="http://host.docker.internal:5000"
-
-                pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml
-
-                docker rm -f selenium-firefox || true
-            '''
-        }
-    }
-    post {
-        always {
-            junit 'reports/e2e-tests.xml'
-        }
-    }
-}
-
-
-        stage('Performance Tests') {
-                when {
-            allOf {
-                branch 'main'
-                expression { params.ENVIRONMENT == 'production' }
+                expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
             }
-        }
-
             steps {
                 script {
-                sh '''
-                . ${VENV_DIR}/bin/activate
+                    sh '''
+                        mkdir -p reports
 
-                python main.py &
-                APP_PID=$!
-                sleep 5
+                        docker rm -f selenium-firefox || true
+                        docker run -d --name selenium-firefox -p 4444:4444 --add-host=host.docker.internal:host-gateway selenium/standalone-firefox:latest
 
-                locust -f tests/performance/locustfile.py \
-                    --headless \
-                    --users 10 \
-                    --spawn-rate 2 \
-                    --run-time 30s \
-                    --host http://localhost:5000 \
-                    --html reports/performance-report.html
+                        sleep 8
 
-                kill $APP_PID || true
-            '''
+                        export SELENIUM_REMOTE_URL="http://localhost:4444/wd/hub"
+                        export APP_BASE_URL="http://host.docker.internal:5000"
+
+                        # run e2e inside python container (so it has deps/venv)
+                        docker run --rm -v "$PWD":/app -w /app python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+
+                        docker rm -f selenium-firefox || true
+                    '''
+                }
             }
-        }
             post {
                 always {
-                publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'reports',
-                reportFiles: 'performance-report.html',
-                reportName: 'Performance Test Report'
-            ])
+                    junit 'reports/e2e-tests.xml'
+                }
+            }
         }
-    }
-}
 
+        stage('Performance Tests') {
+            when {
+                allOf {
+                    branch 'main'
+                    expression { params.ENVIRONMENT == 'production' }
+                }
+            }
+            steps {
+                script {
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} bash -lc '
+                            . ${VENV_DIR}/bin/activate
+                            python main.py &
+                            APP_PID=\$!
+                            sleep 5
 
-        // stage('Performance Tests') {
-        //     steps {
-        //         script {
-        //             sh '''
-        //                 . ${VENV_DIR}/bin/activate
-                        
-        //                 python app.py &
-        //                 APP_PID=$!
-        //                 sleep 5
-                        
-        //                 locust -f tests/performance/locustfile.py \\
-        //                     --headless \\
-        //                     --users 10 \\
-        //                     --spawn-rate 2 \\
-        //                     --run-time 30s \\
-        //                     --host http://localhost:5000 \\
-        //                     --html reports/performance-report.html
-                        
-        //                 kill $APP_PID || true
-        //             '''
-        //         }
-        //     }
-        //     post {
-        //         always {
-        //             publishHTML([
-        //                 allowMissing: false,
-        //                 alwaysLinkToLastBuild: true,
-        //                 keepAll: true,
-        //                 reportDir: 'reports',
-        //                 reportFiles: 'performance-report.html',
-        //                 reportName: 'Performance Test Report'
-        //             ])
-        //         }
-        //     }
-        // }
-        
+                            mkdir -p reports
+
+                            locust -f tests/performance/locustfile.py \
+                                --headless \
+                                --users 10 \
+                                --spawn-rate 2 \
+                                --run-time 30s \
+                                --host http://localhost:5000 \
+                                --html reports/performance-report.html
+
+                            kill \$APP_PID || true
+                        '
+                    """
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports',
+                        reportFiles: 'performance-report.html',
+                        reportName: 'Performance Test Report'
+                    ])
+                }
+            }
+        }
+
         stage('Security Scan') {
             steps {
                 script {
-                    sh '. ${VENV_DIR}/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true'
+                    sh 'mkdir -p reports'
+                    sh """
+                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
+                          bash -lc ". ${VENV_DIR}/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true"
+                    """
                 }
             }
             post {
@@ -211,32 +197,28 @@ pipeline {
         }
 
         stage('Create Version Tag') {
-    when { branch 'main' }
-    steps {
-        script {
-            sh """
-                git config user.email "ci@jenkins"
-                git config user.name "jenkins-ci"
+            when { branch 'main' }
+            steps {
+                script {
+                    sh """
+                        git config user.email "ci@jenkins"
+                        git config user.name "jenkins-ci"
 
-                TAG="v1.0.${BUILD_NUMBER}"
-                git tag -a "\$TAG" -m "CI release \$TAG"
-                git tag --list | tail -n 5
-            """
+                        TAG="v1.0.${BUILD_NUMBER}"
+                        git tag -a "\$TAG" -m "CI release \$TAG"
+                        git tag --list | tail -n 5
+                    """
+                }
+            }
         }
-    }
-}
-
-
-
 
         stage('Build Docker Image') {
             when {
-    allOf {
-        anyOf { branch 'main'; branch 'develop' }
-        expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-    }
-}
-
+                allOf {
+                    anyOf { branch 'main'; branch 'develop' }
+                    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+                }
+            }
             steps {
                 script {
                     sh '''
@@ -248,43 +230,42 @@ pipeline {
         }
 
         stage('Push Docker Image (Docker Hub)') {
-    when {
-        anyOf {
-            branch 'main'
-            branch 'develop'
-        }
-    }
-    steps {
-        script {
-            withCredentials([usernamePassword(
-                credentialsId: "${DOCKERHUB_CREDS}",
-                usernameVariable: 'DH_USER',
-                passwordVariable: 'DH_PASS'
-            )]) {
-                sh """
-                    echo "\$DH_PASS" | docker login -u "\$DH_USER" --password-stdin
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: "${DOCKERHUB_CREDS}",
+                        usernameVariable: 'DH_USER',
+                        passwordVariable: 'DH_PASS'
+                    )]) {
+                        sh """
+                            echo "\$DH_PASS" | docker login -u "\$DH_USER" --password-stdin
 
-                    docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:${BUILD_NUMBER}
-                    docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:latest
+                            docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:${BUILD_NUMBER}
+                            docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:latest
 
-                    docker push ${DOCKERHUB_REPO}:${BUILD_NUMBER}
-                    docker push ${DOCKERHUB_REPO}:latest
+                            docker push ${DOCKERHUB_REPO}:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_REPO}:latest
 
-                    docker logout
-                """
+                            docker logout
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Deploy to Staging') {
             when {
-    allOf {
-        branch 'develop'
-        expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-    }
-}
-
+                allOf {
+                    branch 'develop'
+                    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+                }
+            }
             steps {
                 script {
                     sh '''
@@ -292,7 +273,7 @@ pipeline {
                         docker stop staging-app || true
                         docker rm staging-app || true
                         docker run -d --name staging-app -p 5001:5000 devops-testing-app:${BUILD_NUMBER}
-                        
+
                         sleep 5
                         curl -f http://localhost:5001/health || exit 1
                     '''
@@ -300,16 +281,27 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
-            cleanWs()
+            script {
+                try {
+                    cleanWs()
+                } catch (e) {
+                    echo "cleanWs skipped: ${e}"
+                }
+            }
         }
         success {
             script {
-                sh 'echo "Pipeline completed successfully!"'
+                try {
+                    sh 'echo "Pipeline completed successfully!"'
+                } catch (e) {
+                    echo "success post sh skipped: ${e}"
+                }
+
                 emailext (
-                    subject: "✅ Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                    subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
                     body: """
                         <p>The pipeline completed successfully!</p>
                         <ul>
@@ -321,15 +313,19 @@ pipeline {
                         <p><a href="${env.BUILD_URL}">View Build Details</a></p>
                     """,
                     to: "oefraty@gmail.com"
-
                 )
             }
         }
         failure {
             script {
-                sh 'echo "Pipeline failed!"'
+                try {
+                    sh 'echo "Pipeline failed!"'
+                } catch (e) {
+                    echo "failure post sh skipped: ${e}"
+                }
+
                 emailext (
-                    subject: "❌ Pipeline Failure: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                    subject: "Pipeline Failure: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
                     body: """
                         <p>The pipeline failed!</p>
                         <ul>
