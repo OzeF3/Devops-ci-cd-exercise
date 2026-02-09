@@ -13,7 +13,6 @@ pipeline {
 
     
     environment {
-        PYTHON_VERSION = '3.9'
         VENV_DIR = 'venv'
         DOCKERHUB_REPO = 'devoeoe23ops/devops-testing-app'
         DOCKERHUB_CREDS = 'dockerhub-creds'
@@ -25,7 +24,8 @@ pipeline {
                 script {
                     sh 'echo "Setting up Python environment"'
                     
-                    sh 'python${PYTHON_VERSION} -m venv ${VENV_DIR}'
+                    sh 'python -m venv ${VENV_DIR}'
+
                     sh '. ${VENV_DIR}/bin/activate && pip install --upgrade pip'
                     sh '. ${VENV_DIR}/bin/activate && pip install -r requirements.txt'
                 }
@@ -84,6 +84,10 @@ pipeline {
         }
         
         stage('End-to-End Tests') {
+            when {
+    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+}
+
     steps {
         script {
             sh '''
@@ -227,11 +231,12 @@ pipeline {
 
         stage('Build Docker Image') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
+    allOf {
+        anyOf { branch 'main'; branch 'develop' }
+        expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+    }
+}
+
             steps {
                 script {
                     sh '''
@@ -274,8 +279,12 @@ pipeline {
 
         stage('Deploy to Staging') {
             when {
-                branch 'develop'
-            }
+    allOf {
+        branch 'develop'
+        expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+    }
+}
+
             steps {
                 script {
                     sh '''
@@ -311,7 +320,8 @@ pipeline {
                         </ul>
                         <p><a href="${env.BUILD_URL}">View Build Details</a></p>
                     """,
-                    to: "${env.CHANGE_AUTHOR_EMAIL}"
+                    to: "oefraty@gmail.com"
+
                 )
             }
         }
