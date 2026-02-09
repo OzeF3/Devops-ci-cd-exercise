@@ -176,7 +176,8 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'reports/bandit-report.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+
                 }
             }
         }
