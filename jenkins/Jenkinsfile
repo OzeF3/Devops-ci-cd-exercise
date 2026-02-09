@@ -1,9 +1,22 @@
 pipeline {
-    agent any
+    agent {
+        docker { image 'python:3.9' }
+    }
+    
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['staging', 'production'],
+            description: 'Run performance tests only in production'
+        )
+    }
+
     
     environment {
         PYTHON_VERSION = '3.9'
         VENV_DIR = 'venv'
+        DOCKERHUB_REPO = 'devoeoe23ops/devops-testing-app'
+        DOCKERHUB_CREDS = 'dockerhub-creds'
     }
     
     stages {
@@ -22,6 +35,7 @@ pipeline {
         stage('Lint Code') {
             steps {
                 script {
+                    sh 'mkdir -p reports'
                     sh '. ${VENV_DIR}/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true'
                     sh '. ${VENV_DIR}/bin/activate && pylint app/ --output=reports/pylint.txt || true'
                 }
@@ -70,60 +84,114 @@ pipeline {
         }
         
         stage('End-to-End Tests') {
-            steps {
-                script {
-                    sh '''
-                        . ${VENV_DIR}/bin/activate
-                        export DISPLAY=:99
-                        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
-                        sleep 3
-                        pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml
-                        killall Xvfb || true
-                    '''
-                }
-            }
-            post {
-                always {
-                    junit 'reports/e2e-tests.xml'
-                }
-            }
+    steps {
+        script {
+            sh '''
+                . ${VENV_DIR}/bin/activate
+                mkdir -p reports
+
+                docker rm -f selenium-firefox || true
+                docker run -d --name selenium-firefox -p 4444:4444 --add-host=host.docker.internal:host-gateway selenium/standalone-firefox:latest
+
+
+                sleep 8
+
+                export SELENIUM_REMOTE_URL="http://localhost:4444/wd/hub"
+                export APP_BASE_URL="http://host.docker.internal:5000"
+
+                pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml
+
+                docker rm -f selenium-firefox || true
+            '''
         }
-        
+    }
+    post {
+        always {
+            junit 'reports/e2e-tests.xml'
+        }
+    }
+}
+
+
         stage('Performance Tests') {
-            steps {
-                script {
-                    sh '''
-                        . ${VENV_DIR}/bin/activate
-                        
-                        python app.py &
-                        APP_PID=$!
-                        sleep 5
-                        
-                        locust -f tests/performance/locustfile.py \\
-                            --headless \\
-                            --users 10 \\
-                            --spawn-rate 2 \\
-                            --run-time 30s \\
-                            --host http://localhost:5000 \\
-                            --html reports/performance-report.html
-                        
-                        kill $APP_PID || true
-                    '''
-                }
-            }
-            post {
-                always {
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'reports',
-                        reportFiles: 'performance-report.html',
-                        reportName: 'Performance Test Report'
-                    ])
-                }
+                when {
+            allOf {
+                branch 'main'
+                expression { params.ENVIRONMENT == 'production' }
             }
         }
+
+            steps {
+                script {
+                sh '''
+                . ${VENV_DIR}/bin/activate
+
+                python main.py &
+                APP_PID=$!
+                sleep 5
+
+                locust -f tests/performance/locustfile.py \
+                    --headless \
+                    --users 10 \
+                    --spawn-rate 2 \
+                    --run-time 30s \
+                    --host http://localhost:5000 \
+                    --html reports/performance-report.html
+
+                kill $APP_PID || true
+            '''
+            }
+        }
+            post {
+                always {
+                publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'reports',
+                reportFiles: 'performance-report.html',
+                reportName: 'Performance Test Report'
+            ])
+        }
+    }
+}
+
+
+        // stage('Performance Tests') {
+        //     steps {
+        //         script {
+        //             sh '''
+        //                 . ${VENV_DIR}/bin/activate
+                        
+        //                 python app.py &
+        //                 APP_PID=$!
+        //                 sleep 5
+                        
+        //                 locust -f tests/performance/locustfile.py \\
+        //                     --headless \\
+        //                     --users 10 \\
+        //                     --spawn-rate 2 \\
+        //                     --run-time 30s \\
+        //                     --host http://localhost:5000 \\
+        //                     --html reports/performance-report.html
+                        
+        //                 kill $APP_PID || true
+        //             '''
+        //         }
+        //     }
+        //     post {
+        //         always {
+        //             publishHTML([
+        //                 allowMissing: false,
+        //                 alwaysLinkToLastBuild: true,
+        //                 keepAll: true,
+        //                 reportDir: 'reports',
+        //                 reportFiles: 'performance-report.html',
+        //                 reportName: 'Performance Test Report'
+        //             ])
+        //         }
+        //     }
+        // }
         
         stage('Security Scan') {
             steps {
@@ -137,7 +205,26 @@ pipeline {
                 }
             }
         }
-        
+
+        stage('Create Version Tag') {
+    when { branch 'main' }
+    steps {
+        script {
+            sh """
+                git config user.email "ci@jenkins"
+                git config user.name "jenkins-ci"
+
+                TAG="v1.0.${BUILD_NUMBER}"
+                git tag -a "\$TAG" -m "CI release \$TAG"
+                git tag --list | tail -n 5
+            """
+        }
+    }
+}
+
+
+
+
         stage('Build Docker Image') {
             when {
                 anyOf {
@@ -148,13 +235,43 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        docker build -t devops-testing-app:${BUILD_NUMBER} .
+                        docker build -f docker/dockerfile -t devops-testing-app:${BUILD_NUMBER} .
                         docker tag devops-testing-app:${BUILD_NUMBER} devops-testing-app:latest
                     '''
                 }
             }
         }
-        
+
+        stage('Push Docker Image (Docker Hub)') {
+    when {
+        anyOf {
+            branch 'main'
+            branch 'develop'
+        }
+    }
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: "${DOCKERHUB_CREDS}",
+                usernameVariable: 'DH_USER',
+                passwordVariable: 'DH_PASS'
+            )]) {
+                sh """
+                    echo "\$DH_PASS" | docker login -u "\$DH_USER" --password-stdin
+
+                    docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:${BUILD_NUMBER}
+                    docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:latest
+
+                    docker push ${DOCKERHUB_REPO}:${BUILD_NUMBER}
+                    docker push ${DOCKERHUB_REPO}:latest
+
+                    docker logout
+                """
+            }
+        }
+    }
+}
+
         stage('Deploy to Staging') {
             when {
                 branch 'develop'

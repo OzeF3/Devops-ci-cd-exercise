@@ -1,0 +1,34 @@
+************* Module app
+app\__init__.py:9:0: C0303: Trailing whitespace (trailing-whitespace)
+app\__init__.py:13:0: C0303: Trailing whitespace (trailing-whitespace)
+app\__init__.py:17:0: C0303: Trailing whitespace (trailing-whitespace)
+app\__init__.py:22:0: C0303: Trailing whitespace (trailing-whitespace)
+app\__init__.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+app\__init__.py:6:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\__init__.py:20:8: W0621: Redefining name 'jsonify' from outer scope (line 1) (redefined-outer-name)
+app\__init__.py:20:8: W0404: Reimport 'jsonify' (imported line 1) (reimported)
+app\__init__.py:20:8: C0415: Import outside toplevel (flask.jsonify) (import-outside-toplevel)
+app\__init__.py:4:0: C0411: standard import "os" should be placed before third party import "flask.Flask" and first party imports "app.routes.user_routes.user_bp", "app.routes.product_routes.product_bp"  (wrong-import-order)
+************* Module app.routes.product_routes
+app\routes\product_routes.py:27:0: C0303: Trailing whitespace (trailing-whitespace)
+app\routes\product_routes.py:42:0: C0303: Trailing whitespace (trailing-whitespace)
+app\routes\product_routes.py:50:0: C0303: Trailing whitespace (trailing-whitespace)
+app\routes\product_routes.py:51:0: C0304: Final newline missing (missing-final-newline)
+app\routes\product_routes.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+app\routes\product_routes.py:12:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\product_routes.py:16:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\product_routes.py:23:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\product_routes.py:38:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.routes.user_routes
+app\routes\user_routes.py:42:0: C0303: Trailing whitespace (trailing-whitespace)
+app\routes\user_routes.py:70:0: C0303: Trailing whitespace (trailing-whitespace)
+app\routes\user_routes.py:71:0: C0304: Final newline missing (missing-final-newline)
+app\routes\user_routes.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+app\routes\user_routes.py:16:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\user_routes.py:29:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\user_routes.py:50:0: C0116: Missing function or method docstring (missing-function-docstring)
+app\routes\user_routes.py:51:4: W0603: Using the global statement (global-statement)
+
+-----------------------------------
+Your code has been rated at 5.71/10
+
