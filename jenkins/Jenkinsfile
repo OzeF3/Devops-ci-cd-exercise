@@ -30,6 +30,7 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 script {
+                    sh 'pwd && ls -la'
                     sh 'echo "Setting up Python environment (inside docker run)"'
                     sh """
                         docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
