@@ -33,8 +33,8 @@ pipeline {
                     sh 'pwd && ls -la'
                     sh 'echo "Setting up Python environment (inside docker run)"'
                     sh """
-                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
-                          bash -lc "python -m venv ${VENV_DIR} && . ${VENV_DIR}/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+                        docker run --rm -v "$PWD":/app -w /app python:3.9 bash -lc "pwd && ls -la && python -m venv venv && . venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+
                     """
                 }
             }
