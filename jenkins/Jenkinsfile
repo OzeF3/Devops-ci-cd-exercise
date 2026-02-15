@@ -202,22 +202,24 @@ stage('End-to-End Tests') {
         }
 
         stage('Security Scan') {
-            steps {
-                script {
-                    sh 'mkdir -p reports'
-                    sh """
-                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
-                          bash -lc ". ${VENV_DIR}/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true"
-                    """
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
-
-                }
-            }
+    steps {
+        script {
+            sh '''
+                mkdir -p reports
+                docker run --rm \
+                  --volumes-from jenkins \
+                  -w /var/jenkins_home/workspace/devops-ci-cd \
+                  python:3.9 bash -lc ". venv/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true"
+            '''
         }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/bandit-report.json', allowEmptyArchive: true
+        }
+    }
+}
+
 
         stage('Create Version Tag') {
             when { branch 'main' }
