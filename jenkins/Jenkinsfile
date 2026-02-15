@@ -119,7 +119,7 @@ pipeline {
         echo "== Run E2E tests =="
         docker run --rm --volumes-from jenkins \
           -w /var/jenkins_home/workspace/devops-ci-cd \
-          -e SELENIUM_REMOTE_URL=http://selenium-firefox:4444/wd/hub \
+          -e SELENIUM_REMOTE_URL=http://host.docker.internal:4444/wd/hub\
           -e APP_BASE_URL=http://host.docker.internal:5000 \
           python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
       '''
