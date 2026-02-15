@@ -49,16 +49,10 @@ pipeline {
                 script {
                     sh 'mkdir -p reports'
                     sh """
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
-                        python:3.9 bash -lc ". venv/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true"
-
+                    docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true"
                     """
                     sh """
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
-                        python:3.9 bash -lc ". venv/bin/activate && pylint app/ --output=reports/pylint.txt || true"
-
+                    docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && pylint app/ --output=reports/pylint.txt || true"
                     """
                 }
             }
@@ -93,8 +87,10 @@ pipeline {
                 script {
                     sh 'mkdir -p reports'
                     sh """
-                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} \
-                          bash -lc ". ${VENV_DIR}/bin/activate && pytest tests/integration/ -v --junit-xml=reports/integration-tests.xml"
+                        docker run --rm --volumes-from jenkins \
+                        -w /var/jenkins_home/workspace/devops-ci-cd \
+                        python:3.9 bash -lc ". venv/bin/activate && pytest tests/integration/ -v --junit-xml=reports/integration-tests.xml"
+
                     """
                 }
             }
