@@ -102,40 +102,40 @@ pipeline {
         }
 
         stage('End-to-End Tests') {
-            when {
-                expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-            }
-            steps {
-                script {
-                    sh '''
-                        mkdir -p reports
+  steps {
+    script {
+      sh '''
+        set -e
+        mkdir -p reports
 
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
-                        -e SELENIUM_REMOTE_URL="$SELENIUM_REMOTE_URL" \
-                        -e APP_BASE_URL="$APP_BASE_URL" \
-                        python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+        echo "== Cleanup old selenium container (if exists) =="
+        docker rm -f selenium-firefox 2>/dev/null || true
 
-                        docker run -d --name selenium-firefox -p 4444:4444 --add-host=host.docker.internal:host-gateway selenium/standalone-firefox:latest
+        echo "== Start Selenium Firefox =="
+        docker run -d --name selenium-firefox -p 4444:4444 \
+          --add-host=host.docker.internal:host-gateway \
+          selenium/standalone-firefox:latest
 
-                        sleep 8
+        echo "== Run E2E tests =="
+        docker run --rm --volumes-from jenkins \
+          -w /var/jenkins_home/workspace/devops-ci-cd \
+          -e SELENIUM_REMOTE_URL=http://selenium-firefox:4444/wd/hub \
+          -e APP_BASE_URL=http://host.docker.internal:5000 \
+          python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+      '''
+    }
+  }
 
-                        export SELENIUM_REMOTE_URL="http://localhost:4444/wd/hub"
-                        export APP_BASE_URL="http://host.docker.internal:5000"
+  post {
+    always {
+      sh '''
+        echo "== Stop Selenium Firefox (always) =="
+        docker rm -f selenium-firefox 2>/dev/null || true
+      '''
+    }
+  }
+}
 
-                        # run e2e inside python container (so it has deps/venv)
-                        docker run --rm -v "$PWD":/app -w /app python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
-
-                        docker rm -f selenium-firefox || true
-                    '''
-                }
-            }
-            post {
-                always {
-                    junit 'reports/e2e-tests.xml'
-                }
-            }
-        }
 
         stage('Performance Tests') {
             when {
