@@ -101,39 +101,64 @@ pipeline {
             }
         }
 
-        stage('End-to-End Tests') {
-  steps {
-    script {
-      sh '''
-        set -e
-        mkdir -p reports
+stage('End-to-End Tests') {
+    steps {
+        script {
+            sh '''
+                set -e
+                mkdir -p reports
 
-        echo "== Cleanup old selenium container (if exists) =="
-        docker rm -f selenium-firefox 2>/dev/null || true
+                echo "== Create docker network (if not exists) =="
+                docker network create ci-net >/dev/null 2>&1 || true
 
-        echo "== Start Selenium Firefox =="
-        docker run -d --name selenium-firefox -p 4444:4444 \
-          --add-host=host.docker.internal:host-gateway \
-          selenium/standalone-firefox:latest
+                echo "== Cleanup old containers (if exist) =="
+                docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
 
-        echo "== Run E2E tests =="
-        docker run --rm --volumes-from jenkins \
-          -w /var/jenkins_home/workspace/devops-ci-cd \
-          -e SELENIUM_REMOTE_URL=http://host.docker.internal:4444/wd/hub\
-          -e APP_BASE_URL=http://host.docker.internal:5000 \
-          python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
-      '''
+                echo "== Start App container =="
+                docker run -d --name app-under-test \
+                  --network ci-net \
+                  --volumes-from jenkins \
+                  -w /var/jenkins_home/workspace/devops-ci-cd \
+                  -p 5000:5000 \
+                  python:3.9 bash -lc ". venv/bin/activate && python main.py"
+
+                echo "== Wait for app to be ready =="
+                # Try up to ~30s
+                for i in $(seq 1 30); do
+                  if docker exec app-under-test bash -lc "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5000/health\"); print(\"ok\")'" >/dev/null 2>&1; then
+                    echo "App is ready!"
+                    break
+                  fi
+                  sleep 1
+                done
+
+                echo "== Start Selenium Firefox =="
+                docker run -d --name selenium-firefox \
+                  --network ci-net \
+                  -p 4444:4444 \
+                  selenium/standalone-firefox:latest
+
+                echo "== Run E2E tests =="
+                docker run --rm \
+                  --network ci-net \
+                  --volumes-from jenkins \
+                  -w /var/jenkins_home/workspace/devops-ci-cd \
+                  -e SELENIUM_REMOTE_URL=http://selenium-firefox:4444/wd/hub \
+                  -e APP_BASE_URL=http://app-under-test:5000 \
+                  python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+            '''
+        }
     }
-  }
-
-  post {
-    always {
-      sh '''
-        echo "== Stop Selenium Firefox (always) =="
-        docker rm -f selenium-firefox 2>/dev/null || true
-      '''
+    post {
+        always {
+            sh '''
+                echo "== Stop containers (always) =="
+                docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
+            '''
+            junit 'reports/e2e-tests.xml'
+            archiveArtifacts artifacts: 'reports/e2e-tests.xml', allowEmptyArchive: true
+        }
     }
-  }
 }
 
 
