@@ -110,7 +110,12 @@ pipeline {
                     sh '''
                         mkdir -p reports
 
-                        docker rm -f selenium-firefox || true
+                        docker run --rm --volumes-from jenkins \
+                        -w /var/jenkins_home/workspace/devops-ci-cd \
+                        -e SELENIUM_REMOTE_URL="$SELENIUM_REMOTE_URL" \
+                        -e APP_BASE_URL="$APP_BASE_URL" \
+                        python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+
                         docker run -d --name selenium-firefox -p 4444:4444 --add-host=host.docker.internal:host-gateway selenium/standalone-firefox:latest
 
                         sleep 8
