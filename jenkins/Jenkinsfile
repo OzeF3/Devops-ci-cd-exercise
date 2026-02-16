@@ -5,8 +5,8 @@ pipeline {
         choice(
             name: 'ENVIRONMENT',
             choices: ['staging', 'production'],
-            description: 'Run performance tests only in production')
-        
+            description: 'Run performance tests only in production'
+        )
     }
 
     environment {
@@ -18,21 +18,25 @@ pipeline {
     }
 
     stages {
-
-
         stage('Demo: Fail only in production (Jira)') {
-  when { expression { params.ENVIRONMENT == 'production' } }
-  steps {
-    error('Demo failure: ENVIRONMENT=production (should trigger Jira issue)')
-  }
-}
+            when {
+                expression { params.ENVIRONMENT == 'production' }
+            }
+            steps {
+                error('Demo failure: ENVIRONMENT=production (should trigger Jira issue)')
+            }
+        }
 
-
-        
+        // Missing fetch of git branch - Jenkins should auto-detect and fetch the branch that triggered the build, but if not, we can add:
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+                // git branch: 'main', url: '', credentialsId: 'git-creds'
+            }
+        }
 
         stage('Verify Docker (host)') {
             steps {
-                
                 sh 'docker --version'
                 sh 'docker info'
                 sh 'docker ps'
@@ -44,14 +48,11 @@ pipeline {
                 script {
                     sh 'pwd && ls -la'
                     sh 'echo "Setting up Python environment (inside docker run)"'
-                    sh """
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
+                    sh '''
+                        docker run --rm --volumes-from jenkins \\
+                        -w /var/jenkins_home/workspace/devops-ci-cd \\
                         python:3.9 bash -lc "pwd && ls -la && python -m venv venv && . venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
-
-
-
-                    """
+                    '''
                 }
             }
         }
@@ -60,12 +61,12 @@ pipeline {
             steps {
                 script {
                     sh 'mkdir -p reports'
-                    sh """
-                    docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true"
-                    """
-                    sh """
-                    docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && pylint app/ --output=reports/pylint.txt || true"
-                    """
+                    sh '''
+                        docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && flake8 app/ --output-file=reports/flake8.txt || true"
+                    '''
+                    sh '''
+                        docker run --rm --volumes-from jenkins -w /var/jenkins_home/workspace/devops-ci-cd python:3.9 bash -lc ". venv/bin/activate && pylint app/ --output=reports/pylint.txt || true"
+                    '''
                 }
             }
             post {
@@ -79,31 +80,29 @@ pipeline {
             steps {
                 script {
                     sh 'mkdir -p reports'
-                    sh """
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
+                    sh '''
+                        docker run --rm --volumes-from jenkins \\
+                        -w /var/jenkins_home/workspace/devops-ci-cd \\
                         python:3.9 bash -lc ". venv/bin/activate && pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=html --junit-xml=reports/unit-tests.xml"
-
-                    """
+                    '''
                 }
             }
             post {
-  always {
-    junit 'reports/unit-tests.xml'
-    archiveArtifacts artifacts: 'reports/**,coverage.xml,htmlcov/**', allowEmptyArchive: true
-  }
-}
+                always {
+                    junit 'reports/unit-tests.xml'
+                    archiveArtifacts artifacts: 'reports/**,coverage.xml,htmlcov/**', allowEmptyArchive: true
+                }
+            }
         }
         stage('Integration Tests') {
             steps {
                 script {
                     sh 'mkdir -p reports'
-                    sh """
-                        docker run --rm --volumes-from jenkins \
-                        -w /var/jenkins_home/workspace/devops-ci-cd \
+                    sh '''
+                        docker run --rm --volumes-from jenkins \\
+                        -w /var/jenkins_home/workspace/devops-ci-cd \\
                         python:3.9 bash -lc ". venv/bin/activate && pytest tests/integration/ -v --junit-xml=reports/integration-tests.xml"
-
-                    """
+                    '''
                 }
             }
             post {
@@ -113,65 +112,65 @@ pipeline {
             }
         }
 
-stage('End-to-End Tests') {
-    steps {
-        script {
-            sh '''
-                set -e
-                mkdir -p reports
+        stage('End-to-End Tests') {
+            steps {
+                script {
+                    sh '''
+                        set -e
+                        mkdir -p reports
 
-                echo "== Create docker network (if not exists) =="
-                docker network create ci-net >/dev/null 2>&1 || true
+                        echo "== Create docker network (if not exists) =="
+                        docker network create ci-net >/dev/null 2>&1 || true
 
-                echo "== Cleanup old containers (if exist) =="
-                docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
+                        echo "== Cleanup old containers (if exist) =="
+                        docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
 
-                echo "== Start App container =="
-                docker run -d --name app-under-test \
-                  --network ci-net \
-                  --volumes-from jenkins \
-                  -w /var/jenkins_home/workspace/devops-ci-cd \
-                  -p 5000:5000 \
-                  python:3.9 bash -lc ". venv/bin/activate && python main.py"
+                        echo "== Start App container =="
+                        docker run -d --name app-under-test \\
+                          --network ci-net \\
+                          --volumes-from jenkins \\
+                          -w /var/jenkins_home/workspace/devops-ci-cd \\
+                          -p 5000:5000 \\
+                          python:3.9 bash -lc ". venv/bin/activate && python main.py"
 
-                echo "== Wait for app to be ready =="
-                # Try up to ~30s
-                for i in $(seq 1 30); do
-                  if docker exec app-under-test bash -lc "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5000/health\"); print(\"ok\")'" >/dev/null 2>&1; then
-                    echo "App is ready!"
-                    break
-                  fi
-                  sleep 1
-                done
+                        echo "== Wait for app to be ready =="
+                        # Try up to ~30s
+                        for i in $(seq 1 30); do
+                          if docker exec app-under-test bash -lc "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5000/health\"); print(\"ok\")'" >/dev/null 2>&1; then
+                            echo "App is ready!"
+                            break
+                          fi
+                          sleep 1
+                        done
 
-                echo "== Start Selenium Firefox =="
-                docker run -d --name selenium-firefox \
-                  --network ci-net \
-                  -p 4444:4444 \
-                  selenium/standalone-firefox:latest
+                        echo "== Start Selenium Firefox =="
+                        docker run -d --name selenium-firefox \\
+                          --network ci-net \\
+                          -p 4444:4444 \\
+                          selenium/standalone-firefox:latest
 
-                echo "== Run E2E tests =="
-                docker run --rm \
-                  --network ci-net \
-                  --volumes-from jenkins \
-                  -w /var/jenkins_home/workspace/devops-ci-cd \
-                  -e SELENIUM_REMOTE_URL=http://selenium-firefox:4444/wd/hub \
-                  -e APP_BASE_URL=http://app-under-test:5000 \
-                  python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
-            '''
+                        echo "== Run E2E tests =="
+                        docker run --rm \\
+                          --network ci-net \\
+                          --volumes-from jenkins \\
+                          -w /var/jenkins_home/workspace/devops-ci-cd \\
+                          -e SELENIUM_REMOTE_URL=http://selenium-firefox:4444/wd/hub \\
+                          -e APP_BASE_URL=http://app-under-test:5000 \\
+                          python:3.9 bash -lc ". venv/bin/activate && pytest tests/e2e/ -v --junit-xml=reports/e2e-tests.xml"
+                    '''
+                }
+            }
+            post {
+                always {
+                    sh '''
+                        echo "== Stop containers (always) =="
+                        docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
+                    '''
+                    junit 'reports/e2e-tests.xml'
+                    archiveArtifacts artifacts: 'reports/e2e-tests.xml', allowEmptyArchive: true
+                }
+            }
         }
-    }
-    post {
-        always {
-            sh '''
-                echo "== Stop containers (always) =="
-                docker rm -f selenium-firefox app-under-test >/dev/null 2>&1 || true
-            '''
-            junit 'reports/e2e-tests.xml'
-            archiveArtifacts artifacts: 'reports/e2e-tests.xml', allowEmptyArchive: true
-        }
-    }
-}
 
 
         stage('Performance Tests') {
@@ -183,84 +182,78 @@ stage('End-to-End Tests') {
             }
             steps {
                 script {
-                    sh """
-                        docker run --rm -v "\$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} bash -lc '
+                    sh '''
+                        docker run --rm -v "$PWD":${APP_DIR} -w ${APP_DIR} ${PY_IMAGE} bash -lc '
                             . ${VENV_DIR}/bin/activate
                             python main.py &
-                            APP_PID=\$!
+                            APP_PID=$!
                             sleep 5
 
                             mkdir -p reports
 
-                            locust -f tests/performance/locustfile.py \
-                                --headless \
-                                --users 10 \
-                                --spawn-rate 2 \
-                                --run-time 30s \
-                                --host http://localhost:5000 \
+                            locust -f tests/performance/locustfile.py \\
+                                --headless \\
+                                --users 10 \\
+                                --spawn-rate 2 \\
+                                --run-time 30s \\
+                                --host http://localhost:5000 \\
                                 --html reports/performance-report.html
 
-                            kill \$APP_PID || true
+                            kill $APP_PID || true
                         '
-                    """
+                    '''
                 }
             }
             post {
-  always {
-    archiveArtifacts artifacts: 'reports/performance-report.html', allowEmptyArchive: true
-  }
-}
-
+                always {
+                    archiveArtifacts artifacts: 'reports/performance-report.html', allowEmptyArchive: true
+                }
+            }
         }
-
-
-
-
-
 
         stage('Security Scan') {
-    steps {
-        script {
-            sh '''
-                mkdir -p reports
-                docker run --rm \
-                  --volumes-from jenkins \
-                  -w /var/jenkins_home/workspace/devops-ci-cd \
-                  python:3.9 bash -lc ". venv/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true"
-            '''
+            steps {
+                script {
+                    sh '''
+                        mkdir -p reports
+                        docker run --rm \\
+                          --volumes-from jenkins \\
+                          -w /var/jenkins_home/workspace/devops-ci-cd \\
+                          python:3.9 bash -lc ". venv/bin/activate && bandit -r app/ -f json -o reports/bandit-report.json || true"
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/bandit-report.json', allowEmptyArchive: true
+                }
+            }
         }
-    }
-    post {
-        always {
-            archiveArtifacts artifacts: 'reports/bandit-report.json', allowEmptyArchive: true
-        }
-    }
-}
 
 
         stage('Create Version Tag') {
-            when { branch 'main' }
+            // when { branch 'main' }
             steps {
                 script {
-                    sh """
+                    sh '''
                         git config user.email "ci@jenkins"
                         git config user.name "jenkins-ci"
 
                         TAG="v1.0.${BUILD_NUMBER}"
-                        git tag -a "\$TAG" -m "CI release \$TAG"
+                        git tag -a "$TAG" -m "CI release $TAG"
                         git tag --list | tail -n 5
-                    """
+                    '''
                 }
             }
         }
 
         stage('Build Docker Image') {
-            when {
-                allOf {
-                    anyOf { branch 'main'; branch 'develop' }
-                    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-                }
-            }
+            // when {
+            //     allOf {
+            //         anyOf { branch 'main'; branch 'develop' }
+            //         expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+            //     }
+            // }
             steps {
                 script {
                     sh '''
@@ -272,12 +265,12 @@ stage('End-to-End Tests') {
         }
 
         stage('Push Docker Image (Docker Hub)') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
+            // when {
+            //     anyOf {
+            //         branch 'main'
+            //         branch 'develop'
+            //     }
+            // }
             steps {
                 script {
                     withCredentials([usernamePassword(
@@ -285,8 +278,8 @@ stage('End-to-End Tests') {
                         usernameVariable: 'DH_USER',
                         passwordVariable: 'DH_PASS'
                     )]) {
-                        sh """
-                            echo "\$DH_PASS" | docker login -u "\$DH_USER" --password-stdin
+                        sh '''
+                            echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
 
                             docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:${BUILD_NUMBER}
                             docker tag devops-testing-app:${BUILD_NUMBER} ${DOCKERHUB_REPO}:latest
@@ -295,19 +288,19 @@ stage('End-to-End Tests') {
                             docker push ${DOCKERHUB_REPO}:latest
 
                             docker logout
-                        """
+                        '''
                     }
                 }
             }
         }
 
         stage('Deploy to Staging') {
-            when {
-                allOf {
-                    branch 'develop'
-                    expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
-                }
-            }
+            // when {
+            //     allOf {
+            //         branch 'develop'
+            //         expression { sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0 }
+            //     }
+            // }
             steps {
                 script {
                     sh '''
@@ -324,123 +317,117 @@ stage('End-to-End Tests') {
         }
     }
 
-post {
-  always {
-    script {
-      
-      try {
-        junit 'reports/*.xml'
-      } catch (e) {
-        echo "junit skipped: ${e}"
-      }
+    post {
+        always {
+            script {
+                try {
+                    junit 'reports/*.xml'
+                } catch (e) {
+                    echo "junit skipped: ${e}"
+                }
 
-      
-      try {
-        archiveArtifacts artifacts: 'reports/**, htmlcov/**, coverage.xml', fingerprint: true, allowEmptyArchive: true
-      } catch (e) {
-        echo "archiveArtifacts skipped: ${e}"
-      }
+                try {
+                    archiveArtifacts artifacts: 'reports/**, htmlcov/**, coverage.xml', fingerprint: true, allowEmptyArchive: true
+                } catch (e) {
+                    echo "archiveArtifacts skipped: ${e}"
+                }
 
-      
-      try {
-        publishHTML(target: [
-          allowMissing: true,
-          alwaysLinkToLastBuild: true,
-          keepAll: true,
-          reportDir: 'htmlcov',
-          reportFiles: 'index.html',
-          reportName: 'Coverage Report'
-        ])
-      } catch (e) {
-        echo "publishHTML (coverage) skipped: ${e}"
-      }
+                try {
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                } catch (e) {
+                    echo "publishHTML (coverage) skipped: ${e}"
+                }
 
-      try {
-        publishHTML(target: [
-          allowMissing: true,
-          alwaysLinkToLastBuild: true,
-          keepAll: true,
-          reportDir: 'reports',
-          reportFiles: 'pytest_report.html',
-          reportName: 'Pytest HTML Report'
-        ])
-      } catch (e) {
-        echo "publishHTML (pytest) skipped: ${e}"
-      }
+                try {
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports',
+                        reportFiles: 'pytest_report.html',
+                        reportName: 'Pytest HTML Report'
+                    ])
+                } catch (e) {
+                    echo "publishHTML (pytest) skipped: ${e}"
+                }
 
-      
-      try {
-        cleanWs()
-      } catch (e) {
-        echo "cleanWs skipped: ${e}"
-      }
-    }
-  }
+                try {
+                    cleanWs()
+                } catch (e) {
+                    echo "cleanWs skipped: ${e}"
+                }
+            }
+        }
 
-success {
-  script {
-    try {
-      sh 'echo "Pipeline completed successfully!"'
-    } catch (e) {
-      echo "success post sh skipped: ${e}"
-    }
+        success {
+            script {
+                try {
+                    sh 'echo "Pipeline completed successfully!"'
+                } catch (e) {
+                    echo "success post sh skipped: ${e}"
+                }
 
-    try {
-      emailext (
-        to: 'oefraty@gmail.com',
-        recipientProviders: [],          
-        from: 'oefraty@gmail.com',
-        replyTo: 'oefraty@gmail.com',
-        subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
-        mimeType: 'text/html',
-        body: """
-          <p>The pipeline completed successfully!</p>
-          <ul>
-            <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
-            <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
-            <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
-            <li><strong>Reports:</strong> See Jenkins build links: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b></li>
-          </ul>
-          <p><a href="${env.BUILD_URL}">View Build Details</a></p>
-        """
-      )
-    } catch (e) {
-      echo "success emailext skipped: ${e}"
-    }
-  }
-}
+                try {
+                    emailext (
+                        to: 'oefraty@gmail.com',
+                        recipientProviders: [],
+                        from: 'oefraty@gmail.com',
+                        replyTo: 'oefraty@gmail.com',
+                        subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                        mimeType: 'text/html',
+                        body: '''
+                            <p>The pipeline completed successfully!</p>
+                            <ul>
+                                <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
+                                <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+                                <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
+                                <li><strong>Reports:</strong> See Jenkins build links: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b></li>
+                            </ul>
+                            <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+                        '''
+                    )
+                } catch (e) {
+                    echo "success emailext skipped: ${e}"
+                }
+            }
+        }
 
+        failure {
+            script {
+                try {
+                    emailext(
+                        subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        mimeType: 'text/html',
+                        body: '''
+                            <p><b>Pipeline failed</b></p>
+                            <ul>
+                                <li><strong>Build number:</strong> ${env.BUILD_NUMBER}</li>
+                                <li><strong>Branch name:</strong> ${env.BRANCH_NAME}</li>
+                                <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
+                                <li><strong>Failed stage:</strong> ${env.STAGE_NAME}</li>
+                                <li><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
+                            </ul>
+                            <p>Reports are available in the build page: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b>, and <b>Artifacts</b>.</p>
+                        ''',
+                        to: "oefraty@gmail.com"
+                    )
+                } catch (e) {
+                    echo "failure emailext failed but pipeline continues: ${e}"
+                }
 
-  failure {
-    script {
-      
-      try {
-        emailext(
-          subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-          mimeType: 'text/html',
-          body: """
-            <p><b>Pipeline failed</b></p>
-            <ul>
-              <li><strong>Build number:</strong> ${env.BUILD_NUMBER}</li>
-              <li><strong>Branch name:</strong> ${env.BRANCH_NAME}</li>
-              <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
-              <li><strong>Failed stage:</strong> ${env.STAGE_NAME}</li>
-              <li><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></li>
-            </ul>
-            <p>Reports are available in the build page: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b>, and <b>Artifacts</b>.</p>
-          """,
-          to: "oefraty@gmail.com"
-        )
-      } catch (e) {
-        echo "failure emailext failed but pipeline continues: ${e}"
-      }
-
-      
-      withCredentials([usernamePassword(credentialsId: 'jira-api-token',
-                                        usernameVariable: 'JIRA_USER',
-                                        passwordVariable: 'JIRA_TOKEN')]) {
-
-        sh '''#!/bin/bash
+                withCredentials([usernamePassword(
+                    credentialsId: 'jira-api-token',
+                    usernameVariable: 'JIRA_USER',
+                    passwordVariable: 'JIRA_TOKEN'
+                )]) {
+                    sh '''#!/bin/bash
 set -e
 
 JIRA_URL="https://oefraty.atlassian.net"
@@ -474,16 +461,14 @@ PAYLOAD=$(cat <<EOF
 EOF
 )
 
-curl -sS -X POST \
-  -u "$JIRA_USER:$JIRA_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data "$PAYLOAD" \
+curl -sS -X POST \\
+  -u "$JIRA_USER:$JIRA_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  --data "$PAYLOAD" \\
   "$JIRA_URL/rest/api/3/issue"
-'''
-      }
+                    '''
+                }
+            }
+        }
     }
-  }
-}
-
-
 }
