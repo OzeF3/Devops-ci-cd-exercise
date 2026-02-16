@@ -5,14 +5,8 @@ pipeline {
         choice(
             name: 'ENVIRONMENT',
             choices: ['staging', 'production'],
-            description: 'Run performance tests only in production'
-        )
-        booleanParam(
-        name: 'FORCE_FAIL',
-        defaultValue: false,
-        description: 'Demo: force a real failure to trigger Jira issue creation'
-    )
-
+            description: 'Run performance tests only in production')
+        
     }
 
     environment {
@@ -26,12 +20,13 @@ pipeline {
     stages {
 
 
-        stage('Demo: Force Failure (Jira)') {
-    when { expression { params.FORCE_FAIL } }
-    steps {
-        error('Forced failure for live demo (FORCE_FAIL=true)')
-            }
-                                            }
+        stage('Demo: Fail only in production (Jira)') {
+  when { expression { params.ENVIRONMENT == 'production' } }
+  steps {
+    error('Demo failure: ENVIRONMENT=production (should trigger Jira issue)')
+  }
+}
+
 
         
 
