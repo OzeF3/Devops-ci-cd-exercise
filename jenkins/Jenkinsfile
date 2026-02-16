@@ -18,6 +18,12 @@ pipeline {
     }
 
     stages {
+        """add to force fail"""
+        stage('Fail for Jira test') {
+      steps {
+        sh 'exit 1'
+      }
+    }
 
         stage('Verify Docker (host)') {
             steps {
@@ -308,42 +314,42 @@ stage('End-to-End Tests') {
         }
     }
 
-    post {
-        always {
-            script {
-                try {
-                    cleanWs()
-                } catch (e) {
-                    echo "cleanWs skipped: ${e}"
-                }
-            }
-        }
-        success {
-            script {
-                try {
-                    sh 'echo "Pipeline completed successfully!"'
-                } catch (e) {
-                    echo "success post sh skipped: ${e}"
-                }
+post {
+  always {
+    script {
+      try {
+        cleanWs()
+      } catch (e) {
+        echo "cleanWs skipped: ${e}"
+      }
+    }
+  }
 
-                emailext (
-                    subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
-                    body: """
-                        <p>The pipeline completed successfully!</p>
-                        <ul>
-                            <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
-                            <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
-                            <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
-                            <li><strong>Reports:</strong> Check the artifacts section</li>
-                        </ul>
-                        <p><a href="${env.BUILD_URL}">View Build Details</a></p>
-                    """,
-                    to: "oefraty@gmail.com"
-                )
-            }
-        }
-        
-    
+  success {
+    script {
+      try {
+        sh 'echo "Pipeline completed successfully!"'
+      } catch (e) {
+        echo "success post sh skipped: ${e}"
+      }
+
+      emailext (
+        subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+        body: """
+          <p>The pipeline completed successfully!</p>
+          <ul>
+            <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
+            <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+            <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
+            <li><strong>Reports:</strong> Check the artifacts section</li>
+          </ul>
+          <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+        """,
+        to: "oefraty@gmail.com"
+      )
+    }
+  }
+
   failure {
     script {
       withCredentials([usernamePassword(credentialsId: 'jira-api-token',
@@ -364,7 +370,6 @@ BRANCH_SAFE="${BRANCH_NAME:-unknown-branch}"
 
 SUMMARY="Jenkins Build Failed - ${JOB_NAME_SAFE} #${BUILD_NUM_SAFE}"
 
-# ADF description (valid for Jira Cloud API v3)
 read -r -d '' PAYLOAD <<EOF
 {
   "fields": {
@@ -375,24 +380,9 @@ read -r -d '' PAYLOAD <<EOF
       "type": "doc",
       "version": 1,
       "content": [
-        {
-          "type": "paragraph",
-          "content": [
-            { "type": "text", "text": "Build URL: ${BUILD_URL_SAFE}" }
-          ]
-        },
-        {
-          "type": "paragraph",
-          "content": [
-            { "type": "text", "text": "Branch: ${BRANCH_SAFE}" }
-          ]
-        },
-        {
-          "type": "paragraph",
-          "content": [
-            { "type": "text", "text": "Status: FAILED" }
-          ]
-        }
+        { "type": "paragraph", "content": [ { "type": "text", "text": "Build URL: ${BUILD_URL_SAFE}" } ] },
+        { "type": "paragraph", "content": [ { "type": "text", "text": "Branch: ${BRANCH_SAFE}" } ] },
+        { "type": "paragraph", "content": [ { "type": "text", "text": "Status: FAILED" } ] }
       ]
     }
   }
