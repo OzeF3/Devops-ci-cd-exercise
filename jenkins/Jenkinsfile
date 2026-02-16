@@ -377,36 +377,39 @@ post {
     }
   }
 
-  success {
-    script {
-      try {
-        sh 'echo "Pipeline completed successfully!"'
-      } catch (e) {
-        echo "success post sh skipped: ${e}"
-      }
+success {
+  script {
+    try {
+      sh 'echo "Pipeline completed successfully!"'
+    } catch (e) {
+      echo "success post sh skipped: ${e}"
+    }
 
-      // (keeping your success email as-is)
-      try {
-        emailext (
-          subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
-          mimeType: 'text/html',
-          body: """
-            <p>The pipeline completed successfully!</p>
-            <ul>
-              <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
-              <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
-              <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
-              <li><strong>Reports:</strong> See Jenkins build links: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b></li>
-            </ul>
-            <p><a href="${env.BUILD_URL}">View Build Details</a></p>
-          """,
-          to: "oefraty@gmail.com"
-        )
-      } catch (e) {
-        echo "success emailext skipped: ${e}"
-      }
+    try {
+      emailext (
+        to: 'oefraty@gmail.com',
+        recipientProviders: [],          // חשוב – לא להשתמש ב-default providers
+        from: 'oefraty@gmail.com',
+        replyTo: 'oefraty@gmail.com',
+        subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+        mimeType: 'text/html',
+        body: """
+          <p>The pipeline completed successfully!</p>
+          <ul>
+            <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
+            <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+            <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
+            <li><strong>Reports:</strong> See Jenkins build links: <b>Test Result</b>, <b>Coverage Report</b>, <b>Pytest HTML Report</b></li>
+          </ul>
+          <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+        """
+      )
+    } catch (e) {
+      echo "success emailext skipped: ${e}"
     }
   }
+}
+
 
   failure {
     script {
