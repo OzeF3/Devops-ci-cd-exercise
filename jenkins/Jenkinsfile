@@ -343,39 +343,72 @@ stage('End-to-End Tests') {
             }
         }
         
-    failure {
-        script {
-            withCredentials([usernamePassword(
-                credentialsId: 'jira-api-token',
-                usernameVariable: 'JIRA_USER',
-                passwordVariable: 'JIRA_TOKEN'
-            )]) {
+    
+  failure {
+    script {
+      withCredentials([usernamePassword(credentialsId: 'jira-api-token',
+                                        usernameVariable: 'JIRA_USER',
+                                        passwordVariable: 'JIRA_TOKEN')]) {
 
-                def issueData = """
-                {
-                  "fields": {
-                    "project": {
-                      "key": "KAN"
-                    },
-                    "summary": "Jenkins Build Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                    "description": "Build URL: ${env.BUILD_URL}\\nBranch: ${env.BRANCH_NAME}\\nStage Failed.",
-                    "issuetype": {
-                      "name": "Task"
-                    }
-                  }
-                }
-                """
+        sh '''#!/bin/bash
+set -e
 
-                sh """
-                curl -X POST \
-                  -u $JIRA_USER:$JIRA_TOKEN \
-                  -H "Content-Type: application/json" \
-                  --data '${issueData}' \
-                  https://oefraty.atlassian.net/rest/api/3/issue
-                """
-            }
+JIRA_URL="https://oefraty.atlassian.net"
+PROJECT_KEY="KAN"
+ISSUE_TYPE="Task"
+
+JOB_NAME_SAFE="${JOB_NAME:-unknown-job}"
+BUILD_NUM_SAFE="${BUILD_NUMBER:-unknown-build}"
+BUILD_URL_SAFE="${BUILD_URL:-unknown-url}"
+BRANCH_SAFE="${BRANCH_NAME:-unknown-branch}"
+
+SUMMARY="Jenkins Build Failed - ${JOB_NAME_SAFE} #${BUILD_NUM_SAFE}"
+
+# ADF description (valid for Jira Cloud API v3)
+read -r -d '' PAYLOAD <<EOF
+{
+  "fields": {
+    "project": { "key": "${PROJECT_KEY}" },
+    "summary": "${SUMMARY}",
+    "issuetype": { "name": "${ISSUE_TYPE}" },
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Build URL: ${BUILD_URL_SAFE}" }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Branch: ${BRANCH_SAFE}" }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Status: FAILED" }
+          ]
         }
+      ]
     }
+  }
 }
+EOF
+
+curl -sS -X POST \
+  -u "$JIRA_USER:$JIRA_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "$PAYLOAD" \
+  "$JIRA_URL/rest/api/3/issue"
+'''
+      }
+    }
+  }
+}
+
 
 }
