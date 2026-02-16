@@ -204,11 +204,7 @@ stage('End-to-End Tests') {
         }
 
 
-        stage('Demo Fail (Jira)') {
-  steps {
-    error('Intentional demo failure to trigger Jira issue')
-  }
-}
+
 
 
 
