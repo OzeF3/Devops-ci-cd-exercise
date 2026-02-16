@@ -370,7 +370,7 @@ BRANCH_SAFE="${BRANCH_NAME:-unknown-branch}"
 
 SUMMARY="Jenkins Build Failed - ${JOB_NAME_SAFE} #${BUILD_NUM_SAFE}"
 
-read -r -d '' PAYLOAD <<EOF
+PAYLOAD=$(cat <<EOF
 {
   "fields": {
     "project": { "key": "${PROJECT_KEY}" },
@@ -388,6 +388,8 @@ read -r -d '' PAYLOAD <<EOF
   }
 }
 EOF
+)
+
 
 curl -sS -X POST \
   -u "$JIRA_USER:$JIRA_TOKEN" \
