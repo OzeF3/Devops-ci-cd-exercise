@@ -327,21 +327,21 @@ stage('End-to-End Tests') {
 post {
   always {
     script {
-      // 1) Show JUnit test results in Jenkins UI
+      
       try {
         junit 'reports/*.xml'
       } catch (e) {
         echo "junit skipped: ${e}"
       }
 
-      // 2) Archive reports + coverage artifacts (so they're visible/downloadable in Jenkins)
+      
       try {
         archiveArtifacts artifacts: 'reports/**, htmlcov/**, coverage.xml', fingerprint: true, allowEmptyArchive: true
       } catch (e) {
         echo "archiveArtifacts skipped: ${e}"
       }
 
-      // 3) Publish HTML reports in Jenkins UI (requires: HTML Publisher Plugin)
+      
       try {
         publishHTML(target: [
           allowMissing: true,
@@ -368,7 +368,7 @@ post {
         echo "publishHTML (pytest) skipped: ${e}"
       }
 
-      // 4) cleanup must be LAST (otherwise it deletes reports before Jenkins publishes/archives them)
+      
       try {
         cleanWs()
       } catch (e) {
@@ -388,7 +388,7 @@ success {
     try {
       emailext (
         to: 'oefraty@gmail.com',
-        recipientProviders: [],          // חשוב – לא להשתמש ב-default providers
+        recipientProviders: [],          
         from: 'oefraty@gmail.com',
         replyTo: 'oefraty@gmail.com',
         subject: "Pipeline Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
@@ -413,7 +413,7 @@ success {
 
   failure {
     script {
-      // 1) Failure email with required build details (and failed stage)
+      
       try {
         emailext(
           subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
@@ -435,7 +435,7 @@ success {
         echo "failure emailext failed but pipeline continues: ${e}"
       }
 
-      // 2) Your Jira issue creation (kept as-is)
+      
       withCredentials([usernamePassword(credentialsId: 'jira-api-token',
                                         usernameVariable: 'JIRA_USER',
                                         passwordVariable: 'JIRA_TOKEN')]) {
