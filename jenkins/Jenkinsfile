@@ -21,7 +21,7 @@ pipeline {
 
         stage('Verify Docker (host)') {
             steps {
-                sh 'exit 1'
+                
                 sh 'docker --version'
                 sh 'docker info'
                 sh 'docker ps'
