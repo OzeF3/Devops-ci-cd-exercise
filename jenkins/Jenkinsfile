@@ -18,7 +18,7 @@ pipeline {
     }
 
     stages {
-        """add to force fail"""
+        
         stage('Fail for Jira test') {
       steps {
         sh 'exit 1'
