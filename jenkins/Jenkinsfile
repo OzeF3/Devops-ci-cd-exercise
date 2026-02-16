@@ -21,6 +21,7 @@ pipeline {
 
         stage('Verify Docker (host)') {
             steps {
+                sh 'exit 1'
                 sh 'docker --version'
                 sh 'docker info'
                 sh 'docker ps'
@@ -341,29 +342,40 @@ stage('End-to-End Tests') {
                 )
             }
         }
-        failure {
-            script {
-                try {
-                    sh 'echo "Pipeline failed!"'
-                } catch (e) {
-                    echo "failure post sh skipped: ${e}"
-                }
+        
+    failure {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'jira-api-token',
+                usernameVariable: 'JIRA_USER',
+                passwordVariable: 'JIRA_TOKEN'
+            )]) {
 
-                emailext (
-                    subject: "Pipeline Failure: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
-                    body: """
-                        <p>The pipeline failed!</p>
-                        <ul>
-                            <li><strong>Build:</strong> ${env.BUILD_NUMBER}</li>
-                            <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
-                            <li><strong>Duration:</strong> ${currentBuild.durationString}</li>
-                            <li><strong>Failed Stage:</strong> ${currentBuild.currentResult}</li>
-                        </ul>
-                        <p><a href="${env.BUILD_URL}">View Build Details</a></p>
-                    """,
-                    to: "${env.CHANGE_AUTHOR_EMAIL}"
-                )
+                def issueData = """
+                {
+                  "fields": {
+                    "project": {
+                      "key": "KAN"
+                    },
+                    "summary": "Jenkins Build Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    "description": "Build URL: ${env.BUILD_URL}\\nBranch: ${env.BRANCH_NAME}\\nStage Failed.",
+                    "issuetype": {
+                      "name": "Task"
+                    }
+                  }
+                }
+                """
+
+                sh """
+                curl -X POST \
+                  -u $JIRA_USER:$JIRA_TOKEN \
+                  -H "Content-Type: application/json" \
+                  --data '${issueData}' \
+                  https://oefraty.atlassian.net/rest/api/3/issue
+                """
             }
         }
     }
+}
+
 }
